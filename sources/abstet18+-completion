@@ -1,0 +1,43 @@
+# abstet18+.bash completion
+
+function _abstet {
+
+	# Стандартный блок для completion функций bash (используется встроенная недокументированная функция _init_completion - см. /usr/share/bash-completion/bash_completion)
+	local cur prev words cword
+	_init_completion || return
+
+	case "$prev" in
+		--help | -h)
+			# Прерываемся, если пользователь уже ввёл опцию помощи
+			return
+			;;
+		--align | -a)
+			# Режим ввода способа выравнивания игрового поля
+			COMPREPLY=( $(compgen -W "left right top bottom" -- "$cur" ) )
+			return
+			;;
+		--background-path)
+			# Режим ввода имени каталога
+			_filedir -d
+			return
+			;;
+		--columns | -c)
+			# Режим ввода количества столбцов игрового поля
+			COMPREPLY=( $(compgen -W "{4,6,8} {1..2}{0,2,4,6,8} 30" -- "$cur" ) )
+			return
+			;;
+		--lines | -l)
+			# Режим ввода количества строк игрового поля
+			COMPREPLY=( $(compgen -W "5 {1..9}{0,5} 100" -- "$cur" ) )
+			return
+			;;
+	esac
+
+	if [[ -z "$cur" || "$cur" == -* ]]; then
+		# Если пользователь начал вводить опцию, то выводим ему список опций (парсится автоматически встроенной недокументированной функцией _parse_help - см. /usr/share/bash-completion/bash_completion)
+		COMPREPLY=( $(compgen -W '$(_parse_help ${1} --help)' -- "$cur") )
+		return
+	fi
+
+} &&
+	complete -F _abstet abstet18+.bash
