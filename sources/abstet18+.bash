@@ -1,21 +1,21 @@
 #!/bin/bash
 
-#abstet18+.bash   version 0.1, © 2024 by Sergey Vasiliev aka abs.
-# abstet18+.bash - тетрис 18+ в окне терминала.
-#
+# abstet18+.bash   version 0.1, © 2024 by Sergey Vasiliev aka abs.
+# abstet18+.bash - Tetris 18 + at the Linux terminal / Тетрис 18+ в окне терминала.
+# 
 # abstet18+.bash comes with ABSOLUTELY NO WARRANTY. This is free software, and you are welcome to redistribute it under certain conditions. See the GNU General Public Licence for details.
-#
+# 
 # Использование: abstet18+.bash [ОПЦИЯ] ...
-#
+# 
 # Опции:
 # -c, --columns "Число"                    количество колонок у игрового поля (по-умолчанию: 10)
 # -l, --lines   "Число"                    количество строк у игрового поля (по-умолчанию: 20)
-#
+# 
 # -a, --align "right|left|top|bottom"      к какой границе окна терминала прижать игровое поле (по умолчанию: -a right -a top)
 #     --background-path "Путь к каталогу"  путь к каталогу с фоновыми ascii изображениями (по умолчанию: ./backgrounds/18+)
 # -s, --show-hotkeys                       вывести подсказку по клавишам управления (по-умолчанию - не выводить подсказку)
-#
-# -h, --help
+# 
+# -h, --help                               показывает эту подсказку
 
 
 shopt -s extglob																					# Enables extended globbing patterns, such as, for example, !(this|that) (which would match like * but not any name that is this or that).
@@ -1533,7 +1533,7 @@ function main {
 	# Если была запрошена помощь (или остались нераспознаные аргументы командной строки)
 	if [[ -n "$fl_help" || "$#" -ne 0 || -n "$fl_error" ]]; then
 		echo "${__this_filename}   version 0.1, © 2024 by Sergey Vasiliev aka abs."
-		echo "${__this_filename} - тетрис 18+ в окне терминала."
+		echo "${__this_filename} - Tetris 18 + at the Linux terminal / Тетрис 18+ в окне терминала."
 		echo ""
 		echo "${__this_filename} comes with ABSOLUTELY NO WARRANTY. This is free software, and you are welcome to redistribute it under certain conditions. See the GNU General Public Licence for details."
 		echo ""
