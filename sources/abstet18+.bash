@@ -54,14 +54,65 @@ shopt -s checkwinsize																				# If set, Bash checks the window size a
 # -----------------------------------------------------------------------------
 # Функция abstet
 # тетрис в окне терминала
-# Аргументы: нет
+# Аргументы: см. описание скрипта, проверка аргументов на корректность не производится
 # Возвращаемое значение:
 # 0 - нет ошибок
 # 100 - ошибка: терминал не обладает всеми необходимыми возможностями
 # -----------------------------------------------------------------------------
 function abstet {
 
-	# 1. Объявление переменных и внутренних функций
+	# 1. Проверка возможностей терминала, инициализация переменных
+	# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+	# Массив terminal содержит используемые возможности терминала
+	local -A -r terminal=(
+		# Абсолютное позиционирование курсора
+	#	[raw_address]="vpa"														# vertical position #1 absolute (P)
+	#	[column_address]="hpa"													# horizontal position #1, absolute (P)
+		[cursor_address]="cup"													# move to row #1 columns #2
+		# Относительные перемещения курсора
+	#	[cursor_down]="cud1"													# down one line
+	#	[cursor_left]="cub1"													# move left one space
+	#	[cursor_right]="cuf1"													# non-destructive space (move right one space)
+	#	[cursor_up]="cuu1"														# up one line
+		# Показать/скрыть курсор
+		[cursor_hide]="civis"													# make cursor invisible
+		[cursor_show]="cnorm"													# ake cursor appear normal (undo civis/cvvis)
+		# Звуковой сигнал
+	#	[bell]="bel"															# audible signal (bell) (P)
+		# Получить информацию о терминале
+		[screen_columns]="cols"													# Число столбцов
+		[screen_raws]="lines"													# Число строк
+		# Очистка
+		[screen_clear]="clear"													# clear screen and home cursor (P*)
+	#	[raw_clear_eol]="el"													# clear to end of line (P)
+	#	[raw_clear_begin]="el1"													# clear to beginning of line
+		# Сохранние/восстановление экрана
+		[screen_save]="smcup"													# string to start programs using cup
+		[screen_restore]="rmcup"												# strings to end programs using cup
+	)
+
+	# -----------------------------------------------------------------------------
+	# Функция abstet_check_terminal_capabilities
+	# проверяет возможности терминала на соответствие нужным функциям, описанных в
+	# массиве teminal
+	# Аргументы: нет
+	# Возвращаемое значение:
+	# 0 - терминал обладает нужными функциями
+	# 100 - ошибка: терминал не обладает всеми необходимыми возможностями
+	# -----------------------------------------------------------------------------
+	function abstet_check_terminal_capabilities {
+		local tmpstr="${terminal[*]}"
+		tmpstr=$(infocmp -1 2>/dev/null | grep -wE "${tmpstr// /|}" | wc -l)						# Ищем в выводе команды infocmp элементы массива terminal
+		[[ $tmpstr -ne ${#terminal[@]} ]] && return 100												# 100 - ошибка: терминал не обладает всеми необходимыми возможностями
+		return 0
+	} # abstet_check_terminal_capabilities
+	# -----------------------------------------------------------------------------
+
+	abstet_check_terminal_capabilities
+	[[ $? -eq 100  ]] && return 100																	# 100 - ошибка: терминал не обладает всеми необходимыми возможностями
+
+	# 2. Объявление переменных и внутренних функций
 	# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 	# Ассоциативный массив opt содержит параметры игры
@@ -119,8 +170,8 @@ function abstet {
 	local -a board																# Массив board содержит столбцы игрового поля без текущей фигуры
 	local -a video_buffer_1														# Массив video_buffer_1 - содержит столбцы игрового поля с наложенной фигурой
 	local -a video_buffer_2														# Массив video_buffer_2 - содержит столбцы игрового поля с наложенной фигурой
-	local -g -n _abstet_video_buffer_active="video_buffer_1"					# Глобальная (!) ссылка на активный (текущий) массив video_buffer_?
-	local -g -n _abstet_video_buffer_prev="video_buffer_2"						# Глобальная (!) ссылка на массив video_buffer_?, вывод из которого был ранее
+	local -g -n abstet_video_buffer_active="video_buffer_1"						# Глобальная (!) ссылка на активный (текущий) массив video_buffer_?
+	local -g -n abstet_video_buffer_prev="video_buffer_2"						# Глобальная (!) ссылка на массив video_buffer_?, вывод из которого был ранее
 
 	# Массив frame содержит элементы рамки игрового поля
 	local -a -r frame=( "┌" "┐" "└" "┘" "│" "──" "░" "░░" "vv" "█" "▄▄" "├" )
@@ -131,34 +182,6 @@ function abstet {
 	# 10: 1.664		11:  1.664	12:  1.664	13:  1.331	14:  1.331	15: 1.331	16: 0.998	17: 0.998	18: 0.998	19: 0.666
 	# 20: 0.666		21:  0.666	 22: 0.666	23:  0.666	24:  0.666	25: 0.666	26: 0.666	27: 0.666	28: 0.666	29: 0.333
 	local -a -r levels=( 48 43 38 33 28 23 18 13 8 6 5 5 5 4 4 4 3 3 3 2 2 2 2 2 2 2 2 2 2 1 )
-
-	# Массив terminal содержит используемые возможности терминала
-	local -A -r terminal=(
-		# Абсолютное позиционирование курсора
-	#	[raw_address]="vpa"														# vertical position #1 absolute (P)
-	#	[column_address]="hpa"													# horizontal position #1, absolute (P)
-		[cursor_address]="cup"													# move to row #1 columns #2
-		# Относительные перемещения курсора
-	#	[cursor_down]="cud1"													# down one line
-	#	[cursor_left]="cub1"													# move left one space
-	#	[cursor_right]="cuf1"													# non-destructive space (move right one space)
-	#	[cursor_up]="cuu1"														# up one line
-		# Показать/скрыть курсор
-		[cursor_hide]="civis"													# make cursor invisible
-		[cursor_show]="cnorm"													# ake cursor appear normal (undo civis/cvvis)
-		# Звуковой сигнал
-	#	[bell]="bel"															# audible signal (bell) (P)
-		# Получить информацию о терминале
-		[screen_columns]="cols"													# Число столбцов
-		[screen_raws]="lines"													# Число строк
-		# Очистка
-		[screen_clear]="clear"													# clear screen and home cursor (P*)
-	#	[raw_clear_eol]="el"													# clear to end of line (P)
-	#	[raw_clear_begin]="el1"													# clear to beginning of line
-		# Сохранние/восстановление экрана
-		[screen_save]="smcup"													# string to start programs using cup
-		[screen_restore]="rmcup"												# strings to end programs using cup
-	)
 
 	# Массив tetrominos содержит имена массивов фигур
 	local -a -r tetrominoes=( tetromino_{o,i,l,j,s,z,t} )
@@ -348,60 +371,44 @@ function abstet {
 	local -a backgrounds
 
 	# -----------------------------------------------------------------------------
-	# Функция check_terminal_capabilities
-	# проверяет возможности терминала на соответствие нужным функциям, описанных в
-	# массиве teminal
-	# Аргументы: нет
-	# Возвращаемое значение:
-	# 0 - терминал обладает нужными функциями
-	# 100 - ошибка: терминал не обладает всеми необходимыми возможностями
-	# -----------------------------------------------------------------------------
-	function check_terminal_capabilities {
-		local tmpstr="${terminal[*]}"
-		tmpstr=$(infocmp -1 2>/dev/null | grep -wE "${tmpstr// /|}" | wc -l)						# Ищем в выводе команды infocmp элементы массива terminal
-		[[ $tmpstr -ne ${#terminal[@]} ]] && return 100												# 100 - ошибка: терминал не обладает всеми необходимыми возможностями
-		return 0
-	} # check_terminal_capabilities
-
-	# -----------------------------------------------------------------------------
-	# Функция background_init
+	# Функция abstet_background_init
 	# инициализирует массив с именами файлов фоновых ascii изображений
 	# Аргументы: нет
 	# Возвращаемое значение:
 	# 0 - нет ошибок
 	# 100 - ошибка: каталог с ascii изображениями не обнаружен
 	# -----------------------------------------------------------------------------
-	function background_init {
+	function abstet_background_init {
 
 		[[ ! -d ${opt[background_path]} ]] && return 100											# 100 - ошибка: каталог с ascii изображениями не обнаружен
 		mapfile -t backgrounds < <(	ls -d -1 ${opt[background_path]}/${opt[background_mask]} | sort --random-sort)	# Получить построчный список файлов из каталога и отсортировать его случайным образом
 		(( ${#backgrounds[@]} > 0 )) && opt[background]=0
 
 		return 0
-	} # background_init
+	} # abstet_background_init
 
 	# -----------------------------------------------------------------------------
-	# Функция background_next
+	# Функция abstet_background_next
 	# устанавливает следующее фоновое ascii изображение
 	# Аргументы: нет
 	# Возвращаемое значение: нет
 	# -----------------------------------------------------------------------------
-	function background_next {
+	function abstet_background_next {
 
 		(( opt[background] >= 0 )) && (( opt[background]++ ))										# Если opt[background]=-1, то массив backgrounds не инициализирован
 		(( opt[background] >= ${#backgrounds[@]} )) && (( opt[background] = 0 ))					# Если индекс вышел за пределы массив backgrounds, то нпереходим к первому элементу
 		opt[state_video_buffer]="full"																# Запрашиваем полную перерисовку игрового поля
 
 		return 0
-	} # background_next
+	} # abstet_background_next
 
 	# -----------------------------------------------------------------------------
-	# Функция background_previous
+	# Функция abstet_background_previous
 	# устанавливает предыдущее фоновое ascii изображение
 	# Аргументы: нет
 	# Возвращаемое значение: нет
 	# -----------------------------------------------------------------------------
-	function background_previous {
+	function abstet_background_previous {
 
 		(( opt[background] < 0 )) && return 0														# Если opt[background]=-1, то массив backgrounds не инициализирован
 		(( opt[background]-- ))
@@ -409,23 +416,23 @@ function abstet {
 		opt[state_video_buffer]="full"																# Запрашиваем полную перерисовку игрового поля
 
 		return 0
-	} # background_previous
+	} # abstet_background_previous
 
 	# -----------------------------------------------------------------------------
-	# Функция background_put
+	# Функция abstet_background_put
 	# выводит в окно терминала текущее фоновое ascii изображение
 	# Аргументы: нет
 	# Возвращаемое значение: нет
 	# -----------------------------------------------------------------------------
-	function background_put {
+	function abstet_background_put {
 
 		(( opt[background] >= 0 )) && cut -c "1-${opt[window_width]}" "${backgrounds[opt[background]]}" | head --lines "${opt[window_height]}"
 
 		return 0
-	} # background_put
+	} # abstet_background_put
 
 	# -----------------------------------------------------------------------------
-	# Функция tetrominoes_render
+	# Функция abstet_tetrominoes_render
 	# инициализирует вспомогательные массивы tetromino_?_x{1..2} и tetromino_?_y{1..2}
 	# для уменьшения рассчётов во время игры
 	# tetromino_?_x1 - соответсвует массиву каждой фигуры tetromino_? и содержит для
@@ -443,7 +450,7 @@ function abstet {
 	# Аргументы: нет
 	# Возвращаемое значение: нет
 	# -----------------------------------------------------------------------------
-	function tetrominoes_render {
+	function abstet_tetrominoes_render {
 
 		local i j tmp1 tmp2
 		local -i k l m
@@ -496,10 +503,10 @@ function abstet {
 		done
 
 		return 0
-	} # tetrominoes_render
+	} # abstet_tetrominoes_render
 
 	# -----------------------------------------------------------------------------
-	# Функция ticker_ctl
+	# Функция abstet_ticker_ctl
 	# перезапускает или останавливает фоновый процесс, генерирующий игровую команду
 	# cmd[drop_soft]
 	# Аргументы:
@@ -507,7 +514,7 @@ function abstet {
 	# 		stop - остановка процесса (по умолчанию)
 	# Возвращаемое значение: нет
 	# -----------------------------------------------------------------------------
-	function ticker_ctl {
+	function abstet_ticker_ctl {
 
 		# 1. Останавливаем процесс, генерирующий игровую команду cmd[drop_soft]
 		# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -545,31 +552,33 @@ function abstet {
 		fi
 
 		return 0
-	} # ticker_ctl
+	} # abstet_ticker_ctl
 
 	# -----------------------------------------------------------------------------
-	# Функция video_buffer_exchange
-	# меняет местами ссылки на массивы _abstet_video_buffer_active и _abstet_video_buffer_prev
+	# Функция abstet_video_buffer_exchange
+	# меняет местами ссылки на массивы abstet_video_buffer_active и abstet_video_buffer_prev
 	# Аргументы: нет
 	# Возвращаемое значение: нет
 	# -----------------------------------------------------------------------------
-	function video_buffer_exchange {
+	function abstet_video_buffer_exchange {
 
-		unset _abstet_video_buffer_active
-		unset _abstet_video_buffer_prev
-		if [[ "${!_abstet_video_buffer_active}" == "video_buffer_1" ]]; then
-			local -g -n _abstet_video_buffer_active="video_buffer_2"
-			local -g -n _abstet_video_buffer_prev="video_buffer_1"
+		if [[ "${!abstet_video_buffer_active}" == "video_buffer_1" ]]; then
+			unset -n abstet_video_buffer_active
+			unset -n abstet_video_buffer_prev
+			local -g -n abstet_video_buffer_active="video_buffer_2"
+			local -g -n abstet_video_buffer_prev="video_buffer_1"
 		else
-			local -g -n _abstet_video_buffer_active="video_buffer_1"
-			local -g -n _abstet_video_buffer_prev="video_buffer_2"
+			unset -n abstet_video_buffer_active
+			unset -n abstet_video_buffer_prev
+			local -g -n abstet_video_buffer_active="video_buffer_1"
+			local -g -n abstet_video_buffer_prev="video_buffer_2"
 		fi
 
 		return 0
-	} # video_buffer_exchange
+	} # abstet_video_buffer_exchange
 
 	# -----------------------------------------------------------------------------
-	# Функция video_buffer_render
+	# Функция abstet_video_buffer_render
 	# накладывает текущую фигуру на игровое поле в активном видеобуффере, поднимая
 	# флаг необходимости частичной перерисовки; при необходимости производит фиксацию
 	# фигуры в массиве игрового поля board, тогда флаг необходимости перерисовки не
@@ -580,7 +589,7 @@ function abstet {
 	# перерисовки не поднимается
 	# Возвращаемое значение: нет
 	# -----------------------------------------------------------------------------
-	function video_buffer_render {
+	function abstet_video_buffer_render {
 
 		local -a draft																				# Черновой массив, в котором будем делать наложение фигуры на игрвоое поле
 		local line																					# Текущая накладываемая строка
@@ -668,10 +677,10 @@ function abstet {
 
 		# 2. Копируем активный видеобуфер в предыдущий, а черновой видеобуфер в активный
 		# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-		video_buffer_exchange																		# Активный видеобуфер делаем предыдущим
-		_abstet_video_buffer_active=( )
+		abstet_video_buffer_exchange																# Активный видеобуфер делаем предыдущим
+		abstet_video_buffer_active=( )
 		for i in "${!draft[@]}"; do
-			_abstet_video_buffer_active["$i"]="${draft[${i}]}"
+			abstet_video_buffer_active["$i"]="${draft[${i}]}"
 		done
 
 		# 3. Завершающие шаги
@@ -687,10 +696,10 @@ function abstet {
 		fi
 
 		return 0
-	} # video_buffer_render
+	} # abstet_video_buffer_render
 
 	# -----------------------------------------------------------------------------
-	# Функция tetromino_calculate_projections
+	# Функция abstet_tetromino_calculate_projections
 	# рассчитывает относительные координаты проекций фигуры (относительно ($1, $2)):
 	# opt[left], opt[right] - левая и правая границы проекции фигуры на ось X;
 	# opt[up], opt[down] - верхняя и нижнюю границы проекции фигуры на ось Y;
@@ -703,7 +712,7 @@ function abstet {
 	# opt[y_shadow]:	-1 если фигуру нельзя поместить по переданным координатам,
 	#					иначе - координата проекции фигуры по оси y
 	# -----------------------------------------------------------------------------
-	function tetromino_calculate_projections {
+	function abstet_tetromino_calculate_projections {
 
 		local -n tetromino_x1="${opt[tetromino_x1]}"												# tetromino_x1 указывает на массив tetromino_?_y1 фигуры
 		local -n tetromino_x2="${opt[tetromino_x2]}"												# tetromino_x2 указывает на массив tetromino_?_y1 фигуры
@@ -760,10 +769,10 @@ function abstet {
 		fi
 
 		return 0
-	} # tetromino_calculate_projections
+	} # abstet_tetromino_calculate_projections
 
 	# -----------------------------------------------------------------------------
-	# Функция tetromino_check_intersection
+	# Функция abstet_tetromino_check_intersection
 	# тестирует возможность размещения текущей фигуры по переданным координатам ($1, $2)
 	# Аргументы:
 	# $1 - коордианта x текущей фигуры
@@ -773,7 +782,7 @@ function abstet {
 	# 0 - нет ошибок, фигура успешно расзмещается на игровом поле
 	# 100 - ошибка: размещение фигуры по текущим координатам не возможно
 	# -----------------------------------------------------------------------------
-	function tetromino_check_intersection {
+	function abstet_tetromino_check_intersection {
 
 		local -n tetromino_x1="${opt[tetromino_x1]}"												# tetromino_x1 указывает на массив tetromino_?_y1 фигуры
 		local -n tetromino_x2="${opt[tetromino_x2]}"												# tetromino_x2 указывает на массив tetromino_?_y1 фигуры
@@ -790,38 +799,38 @@ function abstet {
 		done
 
 		return 0
-	} # tetromino_check_intersection
+	} # abstet_tetromino_check_intersection
 
 	# -----------------------------------------------------------------------------
-	# Функция tetromino_move
+	# Функция abstet_tetromino_move
 	# перемещает фигуру по горизонтальной оси
 	# Аргументы:
 	# $1 - если определён, то переместить на одну позицию влево, иначе - вправо
 	# Возвращаемое значение: нет
 	# -----------------------------------------------------------------------------
-	function tetromino_move {
+	function abstet_tetromino_move {
 
 		(( ( opt[y] + opt[down] ) < 0 )) && return 0												# Не даём перемещать фигуру, если она ещё не показалась
 		local -i x_new step
 		[[ -z "$1" ]] && (( step = 2 )) || (( step = -2 ))
 		(( x_new = opt[x] + step ))
 		(( ( x_new + opt[left] ) < 0 || ( x_new + opt[right] ) > ( opt[board_width] << 1 ) )) && return 0	# С новыми координатами фигура выходит за рамки игрового поля
-		tetromino_check_intersection "$x_new" "${opt[y]}" "${opt[shift]}"							# Проверяем возможность поместить фигуру по новым координатам
+		abstet_tetromino_check_intersection "$x_new" "${opt[y]}" "${opt[shift]}"					# Проверяем возможность поместить фигуру по новым координатам
 		[[ $? -ne 0 ]] && return 0
 		(( opt[x] = x_new ))																		# Помещаем фигуру в новые координаты
-		tetromino_calculate_projections "${opt[x]}" "${opt[y]}"										# Перерасчёт проекций фигуры
-		video_buffer_render																			# Обновляем видеобуфер
+		abstet_tetromino_calculate_projections "${opt[x]}" "${opt[y]}"								# Перерасчёт проекций фигуры
+		abstet_video_buffer_render																	# Обновляем видеобуфер
 
 		return 0
-	} # tetromino_move
+	} # abstet_tetromino_move
 
 	# -----------------------------------------------------------------------------
-	# Функция tetromino_rotate
+	# Функция abstet_tetromino_rotate
 	# вращает фигуру по часовой стрелке на одно положение
 	# Аргументы: нет
 	# Возвращаемое значение: нет
 	# -----------------------------------------------------------------------------
-	function tetromino_rotate {
+	function abstet_tetromino_rotate {
 
 		[[ "${opt[tetromino]}" == "tetromino_o" ]] && return 0										# Если текущая фигура tetromino_o, то не вращать
 
@@ -836,23 +845,23 @@ function abstet {
 			(( shift_new = 12	))
 		fi
 
-		tetromino_check_intersection "${opt[x]}" "${opt[y]}" "$shift_new"							# Проверяем возможность повернуть фигуру
+		abstet_tetromino_check_intersection "${opt[x]}" "${opt[y]}" "$shift_new"					# Проверяем возможность повернуть фигуру
 		if [[ $? -ne 0 ]]; then
 			if (( opt[x] == -2 )); then
 				# Если поворот рядом с левой границей игрового поля и фигура выходит за пределы игрового поля, то пробуем оттолкнуться на ячейку от границы
-				tetromino_check_intersection "0" "${opt[y]}" "$shift_new"
+				abstet_tetromino_check_intersection "0" "${opt[y]}" "$shift_new"
 				[[ $? -ne 0 ]] && return 0
 				(( opt[x] = 0 ))
 			elif [[ "${opt[tetromino]}" == "tetromino_i" ]] && (( opt[x] >= (${#opt[board_empty_raw]} - 6) )); then
 				# Если поворот рядом с правой границей игрового поля и фигура выходит за пределы игрового поля, то пробуем оттолкнуться на ячейку от границы
 				(( step = ${#opt[board_empty_raw]} - 8 ))
-				tetromino_check_intersection "$step" "${opt[y]}" "$shift_new"
+				abstet_tetromino_check_intersection "$step" "${opt[y]}" "$shift_new"
 				[[ $? -ne 0 ]] && return 0
 				(( opt[x] = step ))
 			elif (( opt[x] == (${#opt[board_empty_raw]} - 4) )); then
 				# Если поворот рядом с правой границей игрового поля и фигура выходит за пределы игрового поля, то пробуем оттолкнуться на ячейку от границы
 				(( step = ${#opt[board_empty_raw]} - 6 ))
-				tetromino_check_intersection "$step" "${opt[y]}" "$shift_new"
+				abstet_tetromino_check_intersection "$step" "${opt[y]}" "$shift_new"
 				[[ $? -ne 0 ]] && return 0
 				(( opt[x] = step ))
 			else
@@ -861,63 +870,64 @@ function abstet {
 		fi
 		(( opt[shift] = shift_new ))
 
-		tetromino_calculate_projections "${opt[x]}" "${opt[y]}"										# Перерасчёт проекций фигуры
-		video_buffer_render																			# Обновляем видеобуфер
+		abstet_tetromino_calculate_projections "${opt[x]}" "${opt[y]}"								# Перерасчёт проекций фигуры
+		abstet_video_buffer_render																	# Обновляем видеобуфер
 
 		return 0
-	} # tetromino_rotate
+	} # abstet_tetromino_rotate
 
 	# -----------------------------------------------------------------------------
-	# Функция tetromino_drop
+	# Функция abstet_tetromino_drop
 	# перемещает фигуру по вертикальной оси
 	# Аргументы:
 	# $1 - если определён, то hard drop, иначе - soft drop
 	# Возвращаемое значение: нет
 	# -----------------------------------------------------------------------------
-	function tetromino_drop {
+	function abstet_tetromino_drop {
 
 		local -i y_new
 
 		if [[ -n "$1" ]]; then
 			# hard drop
 			if (( opt[y_shadow] != -1 )); then														# Если у фигуры есть тень, то
-				tetromino_check_intersection "${opt[x]}" "${opt[y_shadow]}" "${opt[shift]}"			# Проверяем возможность поместить фигуру в тень
+				abstet_tetromino_check_intersection "${opt[x]}" "${opt[y_shadow]}" "${opt[shift]}"	# Проверяем возможность поместить фигуру в тень
 				[[ $? -eq 0 ]] && (( opt[y] = opt[y_shadow] ))										# Если можно, то помещаем фигуру в тень
 			fi
-			video_buffer_render "commit"															# Фиксируем фигуру в массиве board
-			tetromino_delete_raws																	# Удаление заполненных строк
-			tetromino_get_next																		# Инициализация следующей фигуры
+			abstet_video_buffer_render "commit"														# Фиксируем фигуру в массиве board
+			abstet_tetromino_delete_raws															# Удаление заполненных строк
+			abstet_tetromino_get_next																# Инициализация следующей фигуры
+			opt[state_video_buffer]="full"															# Запрашиваем полную перерисовку игрового поля
 		else
 			# soft drop
 			(( y_new = opt[y] + 1 ))
-			tetromino_check_intersection "${opt[x]}" "$y_new" "${opt[shift]}"						# Проверяем возможность поместить фигуру по новым координатам
+			abstet_tetromino_check_intersection "${opt[x]}" "$y_new" "${opt[shift]}"				# Проверяем возможность поместить фигуру по новым координатам
 			if [[ $? -eq 0 ]]; then
 				# Размещение фигуры по новым координатам
 				(( opt[y] = y_new ))																# Если можно, то помещаем фигуру по новым координатам
-				tetromino_calculate_projections "${opt[x]}" "${opt[y]}"								# Перерасчёт проекций фигуры
+				abstet_tetromino_calculate_projections "${opt[x]}" "${opt[y]}"						# Перерасчёт проекций фигуры
 			else
 				if (( opt[y_shadow] == -1 )); then
 					opt[state_game_over]=true														# По новым координатам разместить фигуру не удалось и тени нет
 				else
 					# Фиксация фигуры
-					video_buffer_render "commit"													# Фиксируем фигуру в массиве board
-					tetromino_delete_raws															# Удаление заполненных строк
-					tetromino_get_next																# Инициализация следующей фигуры
+					abstet_video_buffer_render "commit"												# Фиксируем фигуру в массиве board
+					abstet_tetromino_delete_raws													# Удаление заполненных строк
+					abstet_tetromino_get_next														# Инициализация следующей фигуры
 				fi
 			fi
 		fi
-		video_buffer_render																			# Обновляем видеобуфер
+		abstet_video_buffer_render																	# Обновляем видеобуфер
 
 		return 0
-	} # tetromino_drop
+	} # abstet_tetromino_drop
 
 	# -----------------------------------------------------------------------------
-	# Функция tetromino_delete_raws
+	# Функция abstet_tetromino_delete_raws
 	# удаление заполненных строк с игрового поля
 	# Аргументы: нет
 	# Возвращаемое значение: нет
 	# -----------------------------------------------------------------------------
-	function tetromino_delete_raws {
+	function abstet_tetromino_delete_raws {
 
 		local -i i j k
 		local tmp
@@ -947,7 +957,7 @@ function abstet {
 		if (( opt[lines] >= ( (opt[level] + 1) * 10) )); then
 			(( opt[level]++ ))																		# Увеличиваем уровень, если позволяет счётчик количества удалённых линий
 			kill -SIGUSR2 "${opt[pid_ticker]}" 2>/dev/null											# Посылаем сигнал фоновому процессу увеличить уровень игры
-			background_next																			# Следующее фоновое изображение
+			abstet_background_next																	# Следующее фоновое изображение
 		fi
 
 		(( k == 3)) && (( k = 5 ))
@@ -966,15 +976,15 @@ function abstet {
 		(( opt[combo]++ ))																			# Увеличиваем счётчик непрерывных последовательностей сбросов с удалением линий
 
 		return 0
-	} # tetromino_delete_raws
+	} # abstet_tetromino_delete_raws
 
 	# -----------------------------------------------------------------------------
-	# Функция tetromino_get_next
+	# Функция abstet_tetromino_get_next
 	# инициализация следующей фигуры
 	# Аргументы: нет
 	# Возвращаемое значение: нет
 	# -----------------------------------------------------------------------------
-	function tetromino_get_next {
+	function abstet_tetromino_get_next {
 
 		# Текущую фигуру берём из ранее определённой следующей
 		opt[tetromino]="tetromino_${opt[next]}"
@@ -1001,18 +1011,18 @@ function abstet {
 		done
 		(( opt[y] = i_min - 4 ))
 
-		tetromino_calculate_projections "${opt[x]}" "${opt[y]}"										# Перерасчёт проекций фигуры
+		abstet_tetromino_calculate_projections "${opt[x]}" "${opt[y]}"								# Перерасчёт проекций фигуры
 
 		return 0
-	} # tetromino_get_next
+	} # abstet_tetromino_get_next
 
 	# -----------------------------------------------------------------------------
-	# Функция game_draw
+	# Функция abstet_game_draw
 	# перерисовывает игровое поле содержимым активного видеобуффера
 	# Аргументы: нет
 	# Возвращаемое значение: нет
 	# -----------------------------------------------------------------------------
-	function game_draw {
+	function abstet_game_draw {
 
 		local -i tmp1 tmp2
 
@@ -1048,7 +1058,7 @@ function abstet {
 		elif [[ "${opt[state_video_buffer]}" == "full" ]]; then										# Если запрошена полная перерисовка
 			full_redraw=true
 			tput "${terminal[screen_clear]}"														# Очистка окна для случая полной перерисовки из видеобуфера
-			background_put																			# Вывод фонового ascii изображения
+			abstet_background_put																	# Вывод фонового ascii изображения
 		else																						# Иначе - ничего перерисовывать не надо, выходим
 			return 0
 		fi
@@ -1061,7 +1071,7 @@ function abstet {
 		(( width = ( tmp1 < tmp2 ) ? tmp1 : tmp2 ))
 
 		# -----------------------------------------------------------------------------
-		# Функция print_array
+		# Функция abstet_print_array
 		# выводит строки из массива $3 на экран по начальным координатам ($1, $3); если
 		# задан эталонный массив $4, то производится дополнительная проверка и строка
 		# из массива $3 выводятся только если она отлична от аналогичной строки в массиве $4
@@ -1072,7 +1082,7 @@ function abstet {
 		# $4 - имя эталонного масива со строками
 		# Возвращаемое значение: нет
 		# -----------------------------------------------------------------------------
-		function print_array {
+		function abstet_print_array {
 			local i
 			local -i j=$2
 			local -n ref_to_arr1="$3"
@@ -1086,7 +1096,7 @@ function abstet {
 				(( j++ ))
 			done
 			return 0
-		} # print_array
+		} # abstet_print_array
 		# -----------------------------------------------------------------------------
 
 		local -a arr																				# Массив строк к выводу на экран
@@ -1101,11 +1111,11 @@ function abstet {
 			[[ -z "${opt[state_pause]}" ]] && tmpstr2="${opt[next]}" || tmpstr2="pause"
 		fi
 		arr[${#arr[@]}]="${frame[0]}${tmpstr1:0:(( ${#tmpstr1} - ${#tmpstr2} - 2 ))}${frame[4]}${tmpstr2}${frame[11]}${frame[1]}"	# frame=([0]="┌" [1]="┐" [2]="└" [3]="┘" [4]="│" [5]="──" [6]="░" [7]="░░" [8]="vv" [9]="█" [10]="▄▄" [11]="├")
-		print_array "${opt[board_x]}" "${opt[board_y]}" "arr"
+		abstet_print_array "${opt[board_x]}" "${opt[board_y]}" "arr"
 
 		# 2. Прорисовка игрового поля
 		# ~~~~~~~~~~~~~~~~~~~~~~~~~~~
-		print_array "${opt[board_x]}" $(( opt[board_y] + 1 )) "_abstet_video_buffer_active" "_abstet_video_buffer_prev"
+		abstet_print_array "${opt[board_x]}" $(( opt[board_y] + 1 )) "abstet_video_buffer_active" "abstet_video_buffer_prev"
 
 		# 3. Прорисовка нижней части
 		# ~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -1122,12 +1132,12 @@ function abstet {
 		printf -v tmpstr1 "%s%${tmp1}s" "$tmpstr1" "$tmpstr2"
 		tmpstr2="${opt[board_empty_raw]//${opt[board_empty_ceil]}/  }"
 		arr[${#arr[@]}]="${tmpstr1}${tmpstr2:0:(( (opt[board_width] << 1) - ${#tmpstr1} + 3 ))}"
-		print_array "${opt[board_x]}" $(( opt[board_y] + opt[board_height] + 2 )) "arr"
+		abstet_print_array "${opt[board_x]}" $(( opt[board_y] + opt[board_height] + 2 )) "arr"
 
 		# 4. Прорисовка окна с подсказкой по клавишам
 		# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 		if [[ -n "$full_redraw" && -n "${opt[state_show_help]}" ]]; then
-			print_array "${opt[board_x]}" $(( opt[board_y] + opt[board_height] + 5 )) "help"
+			abstet_print_array "${opt[board_x]}" $(( opt[board_y] + opt[board_height] + 5 )) "help"
 		fi
 
 # TODO - можно удалять - ДЛЯ ОТЛАДКИ - отладочная информация
@@ -1146,7 +1156,7 @@ function abstet {
 #arr[${#arr[@]}]="tetromino_y2"
 #arr[${#arr[@]}]="${tetromino_y2[(( opt[shift] >> 2 ))]}"
 #printf -v arr[${#arr[@]}] "combo:%3d       BtB: %s"  "${opt[combo]}" "${opt[BtB]:-none}"
-#print_array "${opt[board_x]}" $(( opt[board_y] + opt[board_height] + 15 )) "arr"
+#abstet_print_array "${opt[board_x]}" $(( opt[board_y] + opt[board_height] + 15 )) "arr"
 
 		# 5. Сбрасываем флаг перерисовки видеобуфера
 		# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -1158,15 +1168,15 @@ function abstet {
 		[[ "${opt[state_video_buffer]}" == "SIGWINCH" ]] && opt[state_video_buffer]="full" || unset opt[state_video_buffer]
 
 		return 0
-	} # game_draw
+	} # abstet_game_draw
 
 	# -----------------------------------------------------------------------------
-	# Функция game_new
+	# Функция abstet_game_new
 	# начало новой игры
 	# Аргументы: нет
 	# Возвращаемое значение: нет
 	# -----------------------------------------------------------------------------
-	function game_new {
+	function abstet_game_new {
 
 		# Очищаем поле: массив board заполняем пустыми ячейками
 		board=( )
@@ -1189,35 +1199,35 @@ function abstet {
 		unset opt[state_game_over]																	# Сбрасываем флаг окончания игры
 		unset opt[state_pause]																		# Сбрасываем флаг режима паузы
 		unset opt[BtB]																				# Сбрасываем флаг Back-to-Back (BtB)
-		tetromino_get_next																			# Инициализация новой фигуры
-		video_buffer_render																			# Инициализация видеобуфера игровым полем board
+		abstet_tetromino_get_next																	# Инициализация новой фигуры
+		abstet_video_buffer_render																	# Инициализация видеобуфера игровым полем board
 		opt[state_video_buffer]="full"																# Запрашиваем полную перерисовку игрового поля
 
 		return 0
-	} # game_new
+	} # abstet_game_new
 
 	# -----------------------------------------------------------------------------
-	# Функция game_pause
+	# Функция abstet_game_pause
 	# ставит игру на паузу
 	# Аргументы: нет
 	# Возвращаемое значение: нет
 	# -----------------------------------------------------------------------------
-	function game_pause {
+	function abstet_game_pause {
 
 		[[ -n "${opt[state_game_over]}" ]] && return 0												# Если игра окончена, то режим паузы не работает
 		[[ -z "${opt[state_pause]}" ]] && opt[state_pause]=true || unset opt[state_pause]			# Инвертируем режим паузы
 		opt[state_video_buffer]="full"																# Запрашиваем полную перерисовку игрового поля
 
 		return 0
-	} # game_pause
+	} # abstet_game_pause
 
 	# -----------------------------------------------------------------------------
-	# Функция game_help
+	# Функция abstet_game_help
 	# включает или выключает вывод подсказки по клавишам
 	# Аргументы: нет
 	# Возвращаемое значение: нет
 	# -----------------------------------------------------------------------------
-	function game_help {
+	function abstet_game_help {
 
 		[[ -z "${opt[state_show_help]}" ]] && opt[state_show_help]=true || unset opt[state_show_help]	# Инвертируем режим вывода подсказки
 		if [[ "${opt[board_align_y]}" == "bottom" ]]; then											# Если у игрового поля стоит выравнивание по нижей границе окна терминала, то меняем координату по Y у игрового поля
@@ -1230,16 +1240,16 @@ function abstet {
 		opt[state_video_buffer]="full"																# Запрашиваем полную перерисовку игрового поля
 
 		return 0
-	} # game_help
+	} # abstet_game_help
 
 	# -----------------------------------------------------------------------------
-	# Функция game_change_level
+	# Функция abstet_game_change_level
 	# изменяет уровень текущей игры
 	# Аргументы:
 	# $1 - если определён, то уменьшить уровень, иначе - увеличить
 	# Возвращаемое значение: нет
 	# -----------------------------------------------------------------------------
-	function game_change_level {
+	function abstet_game_change_level {
 
 		[[ -n "${opt[state_game_over]}" ]] && return 0												# Если игра окончена, то смена уровня не работает
 
@@ -1249,22 +1259,22 @@ function abstet {
 				(( opt[level]-- ))
 				kill -SIGUSR1 "${opt[pid_ticker]}" 2>/dev/null										# Посылаем сигнал фоновому процессу уменьшить уровень игры
 				[[ -n "${opt[state_pause]}" ]] && opt[state_video_buffer]="full"					# Если игра на паузе, то нужна полная перерисовка
-				background_previous																	# Предыдущее фоновое изображение
+				abstet_background_previous															# Предыдущее фоновое изображение
 			fi
 		else
 			if (( opt[level] < 29 )); then
 				(( opt[level]++ ))
 				kill -SIGUSR2 "${opt[pid_ticker]}" 2>/dev/null										# Посылаем сигнал фоновому процессу увеличить уровень игры
 				[[ -n "${opt[state_pause]}" ]] && opt[state_video_buffer]="full"					# Если игра на паузе, то нужна полная перерисовка
-				background_next																		# Следующее фоновое изображение
+				abstet_background_next																# Следующее фоновое изображение
 			fi
 		fi
 
 		return 0
-	} # game_change_level
+	} # abstet_game_change_level
 
 	# -----------------------------------------------------------------------------
-	# Функция game_move_board
+	# Функция abstet_game_move_board
 	# перемещает игровое поле в окне терминала
 	# Аргументы:
 	# $1:	"up"	- поднять на 1 строку вверх
@@ -1277,7 +1287,7 @@ function abstet {
 	#		"right_border"	- прижать к правой границе окна
 	# Возвращаемое значение: нет
 	# -----------------------------------------------------------------------------
-	function game_move_board {
+	function abstet_game_move_board {
 
 		local -i tmp1 tmp2
 
@@ -1303,11 +1313,11 @@ function abstet {
 		opt[state_video_buffer]="full"																# Запрашиваем полную перерисовку игрового поля
 
 		return 0
-	} #game_move_board
+	} # abstet_game_move_board
 
 	# -----------------------------------------------------------------------------
 
-	# 2. Парсинг аргументов функции. Проверка на корректность не производится.
+	# 3. Парсинг аргументов функции. Проверка на корректность не производится.
 	# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 	[[ "$0" != -bash ]] && opt[background_path]="$(readlink -f $(dirname $0))/backgrounds/18+"		# Если был запуск функции в дочерней оболочке, то пытаемся установить путь по-умолчанию
 	while true; do																					# В цикле обрабатываем известные аргументы
@@ -1327,23 +1337,21 @@ function abstet {
 		esac
 	done
 
-	# 3. Проверка возможностей терминала, инициализация переменных
+	# 4. Инициализация переменных
 	# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-	check_terminal_capabilities
-	[[ $? -eq 100  ]] && return 100																	# 100 - ошибка: терминал не обладает всеми необходимыми возможностями
-
 	opt[board_empty_raw]="${opt[board_filler]:0:(( opt[board_width] * 2))}"
 	opt[board_empty_ceil]="${opt[board_empty_raw]:0:2}"
 	unset opt[board_filler]
 
-	# 4. Сохраняем первоначальный экран, отключаем курсор
+	# 5. Сохраняем первоначальный экран, отключаем курсор
 	# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 	tput "${terminal[cursor_hide]}"
 	tput "${terminal[screen_save]}"
-	trap "tput ${terminal[screen_restore]}; tput ${terminal[cursor_show]}" SIGINT					# При Ctrl+C восстанавливаем курсор и экран
+	# При Ctrl+C восстанавливаем курсор. экран и удаляем глобальные объекты
+	trap "tput "${terminal[screen_restore]}"; tput "${terminal[cursor_show]}"; unset abstet_keyseq; unset -n abstet_video_buffer_active; unset -n abstet_video_buffer_prev; unset -f abstet_check_terminal_capabilities; unset -f abstet_background_init; unset -f abstet_background_next; unset -f abstet_background_previous;	unset -f abstet_background_put;	unset -f abstet_tetrominoes_render; unset -f abstet_ticker_ctl; unset -f abstet_video_buffer_exchange; unset -f abstet_video_buffer_render; unset -f abstet_tetromino_calculate_projections; unset -f abstet_tetromino_check_intersection; unset -f abstet_tetromino_move; unset -f abstet_tetromino_rotate; unset -f abstet_tetromino_drop; unset -f abstet_tetromino_delete_raws; unset -f abstet_tetromino_get_next; unset -f abstet_game_draw; unset -f abstet_print_array; unset -f abstet_game_new; unset -f abstet_game_pause; unset -f abstet_game_help; unset -f abstet_game_change_level; unset -f abstet_game_move_board" SIGINT
 
 	(
-		# 5.1 Подоболочка, преобразующая нажатые клавиши в игровые команды в stdout
+		# 6.1 Подоболочка, преобразующая нажатые клавиши в игровые команды в stdout
 		# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 		local -u key k1 k2 k3 k4 k5 str
@@ -1354,7 +1362,7 @@ function abstet {
 			[+C]="${cmd[board_right]}"		[+D]="${cmd[board_left]}"		[+A]="${cmd[board_up]}"		[+B]="${cmd[board_down]}"
 		)
 
-		ticker_ctl restart																			# Запускаем фоновый процесс, генерирующий игровую команду
+		abstet_ticker_ctl restart																			# Запускаем фоновый процесс, генерирующий игровую команду
 
 		while read -s -n 1 key; do																	# Бесконечный цикл с вводом с клавиатуры (-s без эха, -n 1 прочитать один символ)
 			case "${k5}${k4}${k3}${k2}${k1}${key}" in												# Отслеживаем последовательность из 6 символов
@@ -1376,57 +1384,57 @@ function abstet {
 			fi
 		done
 
-		ticker_ctl stop																				# Останавливаем фоновый процесс, генерирующий игровую команду
+		abstet_ticker_ctl stop																				# Останавливаем фоновый процесс, генерирующий игровую команду
 
 	)|(
 
-		# 5.2 Подоболочка, считывающая игровые команды из stdin
+		# 6.2 Подоболочка, считывающая игровые команды из stdin
 		# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-			# 5.2.1 Инициализация переменных и вспомогательных массивов
+			# 6.2.1 Инициализация переменных и вспомогательных массивов
 			# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-			background_init
-			tetrominoes_render
+			abstet_background_init
+			abstet_tetrominoes_render
 
-			# 5.2.2 Получаем PID фонового процесса, который генерирует игровую команду cmd[drop_soft]
+			# 6.2.2 Получаем PID фонового процесса, который генерирует игровую команду cmd[drop_soft]
 			# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 			for key in $(pgrep --parent "$$"); do													# В key - PID подоболочек основного процесса программы
 				[[ "$key" != "$BASHPID" ]] && break													# Если номер PID у подоболочки не совпадает с PID текущей оболочки, то значит нашли нужный PID
 			done
 			opt[pid_ticker]=$(pgrep --parent "$key")												# У найденной подоболочки получаем PID дочернего процесса - это и есть искомый PID
 
-			# 5.2.3 Начало новой игры
+			# 6.2.3 Начало новой игры
 			# ~~~~~~~~~~~~~~~~~~~~~~~
-			game_new																				# Инициализируем новую игру
+			abstet_game_new																			# Инициализируем новую игру
 			opt[state_video_buffer]="SIGWINCH"														# Запрашиваем полную перерисовку игрового поля с определением параметров окна терминала
 			trap "opt[state_video_buffer]=SIGWINCH" SIGWINCH										# Устанавливаем обработчик события при изменении окна терминала
-			game_draw																				# Прорисовываем
+			abstet_game_draw																		# Прорисовываем
 
-			# 5.2.4 Считываем игровые команды из stdin и выполняем их
+			# 6.2.4 Считываем игровые команды из stdin и выполняем их
 			# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 			local key
 			declare -A -r commands2=(
-				["${cmd[game_new]}"]="game_new"
-				["${cmd[game_pause]}"]="game_pause"
+				["${cmd[game_new]}"]="abstet_game_new"
+				["${cmd[game_pause]}"]="abstet_game_pause"
 				["${cmd[game_quit]}"]="break"
 				["${cmd[game_redraw]}"]="opt[state_video_buffer]=full"
-				["${cmd[game_help]}"]="game_help"
-				["${cmd[right]}"]="tetromino_move"
-				["${cmd[left]}"]="tetromino_move -"
-				["${cmd[rotate]}"]="tetromino_rotate"
-				["${cmd[rotate_ccw]}"]="tetromino_rotate -"
-				["${cmd[drop_soft]}"]="tetromino_drop"
-				["${cmd[drop_hard]}"]="tetromino_drop hard"
-				["${cmd[level_up]}"]="game_change_level"
-				["${cmd[level_down]}"]="game_change_level -"
-				["${cmd[board_right]}"]="game_move_board right"
-				["${cmd[board_left]}"]="game_move_board left"
-				["${cmd[board_up]}"]="game_move_board up"
-				["${cmd[board_down]}"]="game_move_board down"
-				["${cmd[board_to_right]}"]="game_move_board right_border"
-				["${cmd[board_to_left]}"]="game_move_board left_border"
-				["${cmd[board_to_up]}"]="game_move_board up_border"
-				["${cmd[board_to_down]}"]="game_move_board down_border"
+				["${cmd[game_help]}"]="abstet_game_help"
+				["${cmd[right]}"]="abstet_tetromino_move"
+				["${cmd[left]}"]="abstet_tetromino_move -"
+				["${cmd[rotate]}"]="abstet_tetromino_rotate"
+				["${cmd[rotate_ccw]}"]="abstet_tetromino_rotate -"
+				["${cmd[drop_soft]}"]="abstet_tetromino_drop"
+				["${cmd[drop_hard]}"]="abstet_tetromino_drop hard"
+				["${cmd[level_up]}"]="abstet_game_change_level"
+				["${cmd[level_down]}"]="abstet_game_change_level -"
+				["${cmd[board_right]}"]="abstet_game_move_board right"
+				["${cmd[board_left]}"]="abstet_game_move_board left"
+				["${cmd[board_up]}"]="abstet_game_move_board up"
+				["${cmd[board_down]}"]="abstet_game_move_board down"
+				["${cmd[board_to_right]}"]="abstet_game_move_board right_border"
+				["${cmd[board_to_left]}"]="abstet_game_move_board left_border"
+				["${cmd[board_to_up]}"]="abstet_game_move_board up_border"
+				["${cmd[board_to_down]}"]="abstet_game_move_board down_border"
 			)
 
 			while read -s -n 1 key; do
@@ -1435,20 +1443,19 @@ function abstet {
 						 [[ -n "${opt[state_game_over]}" || -n "${opt[state_pause]}" ]] && continue	# Если игра окончена или игра на паузе, то переход к следующей итерации
 					fi
 					eval "${commands2[${key}]}"														# Выполняем игровую команду
-					game_draw
+					abstet_game_draw
 				fi
 			done
 
-			# 5.2.5 Завершаемся
+			# 6.2.5 Завершаемся
 			# ~~~~~~~~~~~~~~~~~
 			trap - SIGWINCH																			# Убираем утанавлиенный ранее обработчик события при изменении окна терминала
-			ticker_ctl stop																			# Останавливаем фоновый процесс, генерирующий игровую команду
+			abstet_ticker_ctl stop																	# Останавливаем фоновый процесс, генерирующий игровую команду
 	)
 
-	# 6. Восстанавливаем первоначальный экран и курсор
-	# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-	tput "${terminal[screen_restore]}"
-	tput "${terminal[cursor_show]}"
+	# 7. Восстанавливаем первоначальный экран и курсор, удаляем глобальные переменные и функции
+	# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+	tput "${terminal[screen_restore]}"; tput "${terminal[cursor_show]}"; unset abstet_keyseq; unset -n abstet_video_buffer_active; unset -n abstet_video_buffer_prev; unset -f abstet_check_terminal_capabilities; unset -f abstet_background_init; unset -f abstet_background_next; unset -f abstet_background_previous;	unset -f abstet_background_put;	unset -f abstet_tetrominoes_render; unset -f abstet_ticker_ctl; unset -f abstet_video_buffer_exchange; unset -f abstet_video_buffer_render; unset -f abstet_tetromino_calculate_projections; unset -f abstet_tetromino_check_intersection; unset -f abstet_tetromino_move; unset -f abstet_tetromino_rotate; unset -f abstet_tetromino_drop; unset -f abstet_tetromino_delete_raws; unset -f abstet_tetromino_get_next; unset -f abstet_game_draw; unset -f abstet_print_array; unset -f abstet_game_new; unset -f abstet_game_pause; unset -f abstet_game_help; unset -f abstet_game_change_level; unset -f abstet_game_move_board
 
 	return 0
 } # abstet
@@ -1612,39 +1619,10 @@ function abstet_main {
 		abstet "$@"
 	else
 		if [[ -n "$fl_remove" ]]; then
-			# 2.2 Удаление функции abstet и её подфункций из текущей оболочки, удаленией комбинации клавиш
-			# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-			# Удаляем назначенную функции abstet ранее комбинацию клавиш
+			# 2.2 Удаляем назначенную функции abstet ранее комбинацию клавиш и саму функцию abstet
+			# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 			bind -r "${abstet_keyseq}"
-			# Удаляем глобальные переменные
-			unset abstet_keyseq
-			unset _abstet_video_buffer_active
-			unset _abstet_video_buffer_prev
-			# Удаляем функцию abstet и её подфункции
 			unset -f abstet
-				unset -f check_terminal_capabilities
-				unset -f background_init
-				unset -f background_next
-				unset -f background_previous
-				unset -f background_put
-				unset -f tetrominoes_render
-				unset -f ticker_ctl
-				unset -f video_buffer_exchange
-				unset -f video_buffer_render
-				unset -f tetromino_calculate_projections
-				unset -f tetromino_check_intersection
-				unset -f tetromino_move
-				unset -f tetromino_rotate
-				unset -f tetromino_drop
-				unset -f tetromino_delete_raws
-				unset -f tetromino_get_next
-				unset -f game_draw
-					unset -f print_array
-				unset -f game_new
-				unset -f game_pause
-				unset -f game_help
-				unset -f game_change_level
-				unset -f game_move_board
 			return 1																				# 1 - запуск скрипта в текущей оболочке с опцией --remove
 		elif [[ -n "$fl_bind" ]]; then
 			# 2.3 Запуск в текущей оболочке с привязкой функции к комбинации клавиш
