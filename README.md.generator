@@ -29,9 +29,10 @@ function press_any_key_to_continue {
 	
 	echo "Press any key to continue..."
 
-	# -s: Do not echo input coming from a terminal
-	# -n 1: Read one character
-	read -s -n 1
+	# -r        do not allow backslashes to escape any characters
+    # -s        do not echo input coming from a terminal
+	# -n nchars return after reading NCHARS characters rather than waiting for a newline, but honor a delimiter if fewer than NCHARS characters are read before the delimiter
+	read -r -s -n 1
 	echo -en "\n"
 
 	return 0
@@ -48,8 +49,8 @@ function spinner {
 	local i=1
 	local -r symbols="/-\|"
 	echo -n ' '
-	while [[ true ]]; do
-		printf "\b${symbols:i++%${#symbols}:1}"
+	while true; do
+		printf "\b%s" "${symbols:i++%${#symbols}:1}"
 		sleep .1
 	done
 } # spinner
@@ -84,7 +85,7 @@ function readme_generator {
 	echo "<br/>"
 	echo "Посвящаю эту работу Александру Яковлеву (17.05.1976 — 08.07.2010), который будучи ещё школьником написал свой гениальный клон знаменитой игры — BackGround Tetris. Его программа btet.com[^1] работала под ОС MS-DOS на процессорах с архитектурой i286/i386. От множества других резидентных программ того времени, в том числе резидентных реализаций Тетриса, её отличал применённый автором подход: эмулировалась многозадачность, можно было играть в игру, пока на компьютере выполнялись другие программы. Тогда для программ это было совсем не характерно и выглядело очень инновационно. «Многозадачность» в MS-DOS настолько смущала людей, что у меня даже состоялся спор со своим другом на тему того, использует ли btet.com защищённый режим процессора или нет (ответ - «не использует»).<br/>" 
 	echo "<br/>"
-	echo "Также посвящаю эту работу Александру Липатову (29.04.1976 — 22.07.2023), с которым мы (я и Манушкин Григорий) в далёком 1994 году, полные надежд, мечтаний и энтузиазма, готовились к конкурсу «Softool\'ийские игры»[^2] на выставке SofTool\'94. Это время было одним из лучших в моей жизни! К сожалению, работы Александра у меня нет. Знаю только, что Александр своё задание выполнил, и только какое-то стечение обстоятельств помешало нам поехать в Москву и принять участие в конкурсе.<br/>"
+	printf "Также посвящаю эту работу Александру Липатову (29.04.1976 — 22.07.2023), с которым мы (я и Манушкин Григорий) в далёком 1994 году, полные надежд, мечтаний и энтузиазма, готовились к конкурсу «Softool\'ийские игры»[^2] на выставке SofTool\'94. Это время было одним из лучших в моей жизни! К сожалению, работы Александра у меня нет. Знаю только, что Александр своё задание выполнил, и только какое-то стечение обстоятельств помешало нам поехать в Москву и принять участие в конкурсе.<br/>"
 	echo "|![Александр Яковлев (слева) и Александр Липатов (справа)](images/yakovlev_alex%20(left)%2C%20lipatov_alex%20(right)%2C%20~1993%20year.png)|![Александр Липатов](images/lipatov_alex%2C%20~1994%20year.png)                   |"
 	echo "|------------------------------------------------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------|"
 	echo "| <sup>Александр Яковлев (слева) и Александр Липатов (справа), предположительно на выпускном вечере в Лицее №14 г. Тамбов (1993 год)</sup> | <sup>Александр Липатов, предположительно 1994 год - таким я его и запомнил</sup> |"
@@ -202,9 +203,9 @@ EOF
 	for i in $(git ls-files sources/*.bash); do
 		echo "## $i"
 		echo '```'
-		echo "  строк кода -------------- $(grep -E --line-regexp --invert-match '[[:blank:]]*#.*?|[[:blank:]]*' ./${i} | wc -l)"
-		echo "  объём кода -------------- $(grep -E --line-regexp --invert-match '[[:blank:]]*#.*?|[[:blank:]]*' ./${i} | wc -c) символов"
-		echo "  контрольная сумма MD5 --- $(md5sum ./${i} | awk '{ print $1 }')"
+		echo "  строк кода -------------- $(grep -Ec --line-regexp --invert-match '[[:blank:]]*#.*?|[[:blank:]]*' ./"$i")"
+		echo "  объём кода -------------- $(grep -E --line-regexp --invert-match '[[:blank:]]*#.*?|[[:blank:]]*' ./"$i" | wc -c) символов"
+		echo "  контрольная сумма MD5 --- $(md5sum ./"$i" | awk '{ print $1 }')"
 		echo -e '```\n'
 	done
 	echo ""
@@ -242,10 +243,11 @@ function main {
 	# Аргументы: нет
 	# Возвращаемое значение: нет
 	# -----------------------------------------------------------------------------
+	# shellcheck disable=SC2317  # Don't warn about unreachable commands in this function
 	function ctrl_c {
 		
 		# Останавливаем спиннер и чистим экран после него и press_any_key_to_continue
-		kill $spinner_pid && wait $spinner_pid 2>/dev/null
+		kill "$spinner_pid" && wait "$spinner_pid" 2>/dev/null
 		tput cr 	# carriage_return (cr/) cr  carriage return (P*) (P*)
 		tput cuu1	# cursor_up (cuu1/up)  up one line
 		tput el		# clr_eol (el/ce) clear to end of line (P)
@@ -277,7 +279,7 @@ function main {
 	readme_generator >README.md
 
 	# Останавливаем спиннер и чистим экран после него и press_any_key_to_continue
-	kill $spinner_pid && wait $spinner_pid 2>/dev/null
+	kill "$spinner_pid" && wait "$spinner_pid" 2>/dev/null
 	tput cr 	# carriage_return (cr/) cr  carriage return (P*) (P*)
 	tput cuu1	# cursor_up (cuu1/up)  up one line
 	tput cuu1	# cursor_up (cuu1/up)  up one line
